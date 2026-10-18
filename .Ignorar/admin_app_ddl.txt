@@ -1,0 +1,262 @@
+-- =============================================================================
+-- CONFIGURAÇÕES INICIAIS DO LIBSQL / SQLITE
+-- =============================================================================
+PRAGMA foreign_keys = ON;
+PRAGMA encoding = "UTF-8";
+
+-- =============================================================================
+-- 1. TABELA: admin_empresa
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_empresa (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    razao_social        TEXT NOT NULL,
+    nome_fantasia       TEXT,
+    
+    -- Dados Fiscais (Armazenamento criptografado sob AES-256 / Base64)
+    cnpj_encrypted      TEXT NOT NULL,
+    ie_encrypted        TEXT,
+    im_encrypted        TEXT,
+    regime_tributario   TEXT CHECK (regime_tributario IN ('simples_nacional', 'lucro_presumido', 'lucro_real', 'mei')),
+    cnae_principal      TEXT,
+    
+    -- Contato
+    email_contato       TEXT NOT NULL,
+    telefone            TEXT,
+    whatsapp            TEXT,
+    
+    -- Endereço
+    logradouro          TEXT,
+    numero              TEXT,
+    complemento         TEXT,
+    bairro              TEXT,
+    cep                 TEXT,
+    cidade              TEXT,
+    uf                  TEXT CHECK (length(uf) = 2),
+    codigo_ibge         TEXT,
+    
+    -- Status
+    status              TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'inativo', 'suspenso')),
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_empresa_razao ON admin_empresa(razao_social);
+CREATE INDEX IF NOT EXISTS idx_admin_empresa_status ON admin_empresa(status);
+CREATE INDEX IF NOT EXISTS idx_admin_empresa_delete ON admin_empresa(delete_date);
+
+-- =============================================================================
+-- 2. TABELA: admin_usuario
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_usuario (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome                TEXT NOT NULL,
+    email               TEXT NOT NULL UNIQUE,
+    senha_hash          TEXT NOT NULL,
+    
+    -- Documento Criptografado
+    cpf_encrypted       TEXT NOT NULL,
+    
+    celular             TEXT,
+    theme               TEXT NOT NULL DEFAULT 'light' CHECK (theme IN ('light', 'dark')),
+    avatar_url          TEXT,
+    status              TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'bloqueado', 'pendente')),
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_usuario_email ON admin_usuario(email);
+CREATE INDEX IF NOT EXISTS idx_admin_usuario_status ON admin_usuario(status);
+CREATE INDEX IF NOT EXISTS idx_admin_usuario_delete ON admin_usuario(delete_date);
+
+-- =============================================================================
+-- 3. TABELA: admin_grupo
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_grupo (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome                TEXT NOT NULL UNIQUE,
+    descricao           TEXT,
+    status              TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'inativo')),
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_grupo_status ON admin_grupo(status);
+CREATE INDEX IF NOT EXISTS idx_admin_grupo_delete ON admin_grupo(delete_date);
+
+-- =============================================================================
+-- 4. TABELA: admin_usuario_grupo (N:N Usuário x Grupo)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_usuario_grupo (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_usuario_id    INTEGER NOT NULL,
+    admin_grupo_id      INTEGER NOT NULL,
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER,
+    
+    FOREIGN KEY (admin_usuario_id) REFERENCES admin_usuario(id) ON DELETE CASCADE,
+    FOREIGN KEY (admin_grupo_id)   REFERENCES admin_grupo(id)   ON DELETE CASCADE,
+    CONSTRAINT uq_usuario_grupo UNIQUE (admin_usuario_id, admin_grupo_id, delete_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aug_usuario ON admin_usuario_grupo(admin_usuario_id);
+CREATE INDEX IF NOT EXISTS idx_aug_grupo ON admin_usuario_grupo(admin_grupo_id);
+CREATE INDEX IF NOT EXISTS idx_aug_delete ON admin_usuario_grupo(delete_date);
+
+-- =============================================================================
+-- 5. TABELA: admin_empresa_grupo (N:N Empresa x Grupo - Governança Multiempresa)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_empresa_grupo (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_empresa_id    INTEGER NOT NULL,
+    admin_grupo_id      INTEGER NOT NULL,
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER,
+    
+    FOREIGN KEY (admin_empresa_id) REFERENCES admin_empresa(id) ON DELETE CASCADE,
+    FOREIGN KEY (admin_grupo_id)   REFERENCES admin_grupo(id)   ON DELETE CASCADE,
+    CONSTRAINT uq_empresa_grupo UNIQUE (admin_empresa_id, admin_grupo_id, delete_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aeg_empresa ON admin_empresa_grupo(admin_empresa_id);
+CREATE INDEX IF NOT EXISTS idx_aeg_grupo ON admin_empresa_grupo(admin_grupo_id);
+CREATE INDEX IF NOT EXISTS idx_aeg_delete ON admin_empresa_grupo(delete_date);
+
+-- =============================================================================
+-- 6. TABELA: admin_rotina
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_rotina (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    codigo              TEXT NOT NULL UNIQUE,  -- Ex: "CAD_EMPRESA", "REL_FATURAMENTO"
+    nome                TEXT NOT NULL,
+    controller          TEXT NOT NULL,        -- Classe controller no Adianti (ex: EmpresaList)
+    modulo              TEXT,                 -- Agrupador visual/menu
+    icone               TEXT,                 -- Classe FontAwesome (ex: "fa fa-building")
+    visivel_menu        INTEGER NOT NULL DEFAULT 1 CHECK (visivel_menu IN (0, 1)),
+    ordem               INTEGER NOT NULL DEFAULT 0,
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_rotina_codigo ON admin_rotina(codigo);
+CREATE INDEX IF NOT EXISTS idx_admin_rotina_controller ON admin_rotina(controller);
+CREATE INDEX IF NOT EXISTS idx_admin_rotina_delete ON admin_rotina(delete_date);
+
+-- =============================================================================
+-- 7. TABELA: admin_grupo_rotina (Permissões N:N Grupo x Rotina)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_grupo_rotina (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_grupo_id      INTEGER NOT NULL,
+    admin_rotina_id     INTEGER NOT NULL,
+    
+    -- Flags Granulares de Acesso (0 ou 1)
+    pode_ler            INTEGER NOT NULL DEFAULT 1 CHECK (pode_ler IN (0, 1)),
+    pode_inserir        INTEGER NOT NULL DEFAULT 0 CHECK (pode_inserir IN (0, 1)),
+    pode_editar         INTEGER NOT NULL DEFAULT 0 CHECK (pode_editar IN (0, 1)),
+    pode_deletar        INTEGER NOT NULL DEFAULT 0 CHECK (pode_deletar IN (0, 1)),
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER,
+    
+    FOREIGN KEY (admin_grupo_id)  REFERENCES admin_grupo(id)  ON DELETE CASCADE,
+    FOREIGN KEY (admin_rotina_id) REFERENCES admin_rotina(id) ON DELETE CASCADE,
+    CONSTRAINT uq_grupo_rotina UNIQUE (admin_grupo_id, admin_rotina_id, delete_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_agr_grupo ON admin_grupo_rotina(admin_grupo_id);
+CREATE INDEX IF NOT EXISTS idx_agr_rotina ON admin_grupo_rotina(admin_rotina_id);
+CREATE INDEX IF NOT EXISTS idx_agr_delete ON admin_grupo_rotina(delete_date);
+
+-- =============================================================================
+-- 8. TABELA: admin_log_acesso
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS admin_log_acesso (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_usuario_id    INTEGER,              -- Pode ser nulo se a autenticação falhar
+    login_attempt       TEXT NOT NULL,        -- E-mail/login informado na tentativa
+    data_login          TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    data_logout         TEXT,
+    ip_address          TEXT NOT NULL,        -- Suporta IPv4 e IPv6
+    user_agent          TEXT,
+    canal_acesso        TEXT NOT NULL DEFAULT 'web' CHECK (canal_acesso IN ('web', 'mobile_app', 'api')),
+    status_acesso       TEXT NOT NULL CHECK (status_acesso IN ('sucesso', 'credenciais_invalidas', 'bloqueado', 'expirado')),
+    
+    -- Auditoria e Rastreabilidade (Obrigatório)
+    create_date         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    update_date         TEXT,
+    delete_date         TEXT,
+    user_create         INTEGER NOT NULL,
+    user_update         INTEGER,
+    user_delete         INTEGER,
+    
+    FOREIGN KEY (admin_usuario_id) REFERENCES admin_usuario(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ala_usuario ON admin_log_acesso(admin_usuario_id);
+CREATE INDEX IF NOT EXISTS idx_ala_data ON admin_log_acesso(data_login);
+CREATE INDEX IF NOT EXISTS idx_ala_status ON admin_log_acesso(status_acesso);
+CREATE INDEX IF NOT EXISTS idx_ala_delete ON admin_log_acesso(delete_date);
+
+-- =============================================================================
+-- TRIGGERS DE ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMP (update_date)
+-- =============================================================================
+CREATE TRIGGER IF NOT EXISTS trg_empresa_update AFTER UPDATE ON admin_empresa
+BEGIN
+    UPDATE admin_empresa SET update_date = datetime('now', 'localtime') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_usuario_update AFTER UPDATE ON admin_usuario
+BEGIN
+    UPDATE admin_usuario SET update_date = datetime('now', 'localtime') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_grupo_update AFTER UPDATE ON admin_grupo
+BEGIN
+    UPDATE admin_grupo SET update_date = datetime('now', 'localtime') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_rotina_update AFTER UPDATE ON admin_rotina
+BEGIN
+    UPDATE admin_rotina SET update_date = datetime('now', 'localtime') WHERE id = NEW.id;
+END;

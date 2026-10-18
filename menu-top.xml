@@ -1,0 +1,6 @@
+<menu>
+	<menuitem label="Meu Perfil">
+		<action>SystemProfileView</action>
+		<icon>fas:user-circle</icon>
+	</menuitem>m>
+</menu>

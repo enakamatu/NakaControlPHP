@@ -1,0 +1,58 @@
+Atue como Engenheiro de Software Sênior especialista em PHP e no Adianti Framework (versão 7+), com profundo domínio em modelagem de dados relacional e conformidade com a LGPD/segurança da informação.
+
+### CONTEXTO DA ARQUITETURA
+- O sistema opera com persistência segregada:
+  1. Base libSQL (SQLite-compatible/Turso): utilizada para autenticação, autorização granular, multitenancy estrutural, configurações de ambiente e auditoria/log.
+  2. Base MySQL: utilizada exclusivamente para o core de regras de negócio transacionais.
+- Este escopo abrange estritamente a BASE libSQL (portal/app administrativo) e seus respectivos Models no Adianti Framework.
+
+### DIRETRIZES DE SEGURANÇA E AUDITORIA (OBRIGATÓRIO)
+1. Rastreabilidade e Soft Delete: TODAS as tabelas devem conter obrigatoriamente as colunas de auditoria:
+   - `create_date` (DATETIME / TEXT ISO-8601)
+   - `update_date` (DATETIME / TEXT ISO-8601, NULL)
+   - `delete_date` (DATETIME / TEXT ISO-8601, NULL)
+   - `user_create` (INTEGER / VARCHAR de identificação do operador)
+   - `user_update` (INTEGER / VARCHAR, NULL)
+   - `user_delete` (INTEGER / VARCHAR, NULL)
+2. Proteção de Dados Sensíveis:
+   - Senhas: hash unidirecional seguro (`password_hash` com PASSWORD_BCRYPT ou ARGON2ID).
+   - Documentos (CPF, CNPJ, Inscrição Estadual/Municipal): devem ser armazenados sob criptografia bidirecional simétrica (ex: AES-256-CBC / OpenSSL) no banco de dados. Os Models devem tratar a encriptação/decriptação transparente via hooks (`onBeforeStore`/`onAfterLoad` ou getters/setters dedicados).
+
+---
+
+### ENTIDADES A MODELAR NO libSQL (DDL SQL)
+Gere o script SQL compatível com libSQL/SQLite contendo as chaves primárias, estrangeiras (`FOREIGN KEY`), índices de performance e triggers (se aplicável), contemplando:
+
+1. `admin_empresa`:
+   - Identificador, Razão Social, Nome Fantasia.
+   - Dados Fiscais: CNPJ (armazenamento criptografado), Inscrição Estadual (criptografado), Inscrição Municipal (criptografado), Regime Tributário, CNAE principal.
+   - Contato e Endereço: E-mail fiscal/contato, Telefone/WhatsApp, Logradouro, Número, Complemento, Bairro, CEP, Cidade, UF, Código IBGE do município.
+   - Status (ativo/inativo).
+2. `admin_usuario`:
+   - Identificador, Nome completo, E-mail (login principal, com índice único), Senha (hash), CPF (armazenamento criptografado), Celular/WhatsApp.
+   - Preferências: `theme` (varchar default 'light' check in ('light', 'dark')), avatar/foto, status (ativo/bloqueado/pendente).
+3. `admin_grupo`:
+   - Identificador, Nome do perfil/grupo (ex: "Administradores", "Fiscal", "Suporte"), Descrição, Status.
+4. `admin_usuario_grupo`:
+   - Tabela de associação N:N entre `admin_usuario` e `admin_grupo`.
+5. `admin_empresa_grupo`:
+   - Matriz de amarração de acesso N:N entre `admin_empresa` e `admin_grupo` (define quais grupos/perfis possuem governança e visão sobre quais empresas no modelo multiempresa).
+6. `admin_rotina`:
+   - Identificador, Código canônico (ex: "CON_CLIENTES", "CAD_EMPRESA"), Nome descritivo da rotina, Caminho/Controlador (Classe no Adianti, ex: `EmpresaList`), Módulo/Menu pai, Ícone, Visível em menu (boolean).
+7. `admin_grupo_rotina`:
+   - Amarração N:N entre `admin_grupo` e `admin_rotina`, incluindo flags granulares de permissão: `pode_ler`, `pode_inserir`, `pode_editar`, `pode_deletar`.
+8. `admin_log_acesso`:
+   - Identificador, `admin_usuario_id`, Data/hora de login, Data/hora de logout/expiração, Endereço IP (compatível com IPv4/IPv6), User-Agent (navegador/app), Canal de acesso (Web Portal vs App Mobile), Status da tentativa (Sucesso, Credenciais Inválidas, Bloqueado).
+
+---
+
+### ARQUIVOS MODEL (ADIANTI FRAMEWORK)
+Para cada uma das entidades acima, gere a classe correspondente estendendo `TRecord`:
+1. Estrutura Padrão:
+   - Constantes `TABLENAME = 'nome_tabela'`, `PRIMARYKEY = 'id'`, `IDPOLICY = 'serial'` e `DATABASE = 'libsql_admin'`.
+2. Mapeamento de Relacionamentos:
+   - Declarar explicitamente os métodos de agregação e composição via `$this->addAggregate()` e `$this->addComposite()` ou métodos carregadores (`loadPart`, `get_usuario`, `get_empresa`, etc.).
+3. Soft Delete e Triggers do Adianti:
+   - Sobrescrever `delete()` para atualizar `delete_date = date('Y-m-d H:i:s')` e `user_delete` em vez de executar o `DELETE` físico direto.
+4. Encapsulamento de Criptografia:
+   - Exemplificar nos Models `Empresa` e `Usuario` os métodos interceptadores para decifrar os documentos (CPF/CNPJ) ao ler e cifrar ao persistir (`store()`), usando uma classe utilitária de segurança padrão (ex: `SecurityHelper::encrypt` / `SecurityHelper::decrypt`).

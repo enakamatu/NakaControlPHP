@@ -1,0 +1,24 @@
+Iniciando provisionamento da base libSQL...
+1. Configurando Empresa de Homologação...
+   -> Empresa cadastrada com sucesso (ID: 1).
+2. Configurando Grupo 'Administradores'...
+   -> Grupo Administradores criado (ID: 1).
+   -> Empresa vinculada ao grupo Administradores.
+3. Configurando Usuário 'admin'...
+   -> Usuário 'admin' criado com sucesso (ID: 1).
+   -> Vínculo do usuário admin com o grupo Administradores concluído.
+4. Provisionando catálogo de rotinas do sistema...
+   -> Rotina cadastrada: EmpresaList
+   -> Rotina cadastrada: EmpresaForm
+   -> Rotina cadastrada: UsuarioList
+   -> Rotina cadastrada: UsuarioForm
+   -> Rotina cadastrada: GrupoList
+   -> Rotina cadastrada: GrupoForm
+   -> Rotina cadastrada: RotinaList
+   -> Rotina cadastrada: RotinaForm
+   -> Rotina cadastrada: LogAcessoList
+   -> Todas as rotinas foram amarradas ao Grupo Administradores.
+
+=== PROVISIONAMENTO CONCLUÍDO COM SUCESSO! ===
+Login: admin@sistema.local
+Senha: admin
